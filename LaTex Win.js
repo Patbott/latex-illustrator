@@ -6,24 +6,32 @@ var i=temppath.indexOf("Temporary Internet Files");
 if(i>=0) temppath=temppath.substr(0,i+4);
 //temppath should now contain something like C:\Documents and Settings\<user>\Local Settings\Temp
 
-// remember the last user input in a text file
 var lastcode="$$"
-var lastcodefile=File(temppath+"\\latex2illustrator_lastcode.txt");
-if(lastcodefile.exists)
-  {
-  lastcodefile.open("r");
-  lastcode=lastcodefile.read();
-  lastcodefile.close();
+
+// Check if the selected item already has latex code attached to it
+var selectedItems = app.activeDocument.selection;
+
+// check if objects are selected
+if(selectedItems.length>0){
+  // select first object in selection
+  var selectedItem = selectedItems[0];
+  var tagList =  selectedItem.tags;
+  // if the object has tags, check if it has the latex code tag
+  if (tagList.length>0){
+    for(i=0;i<tagList.length;i++){
+      if(tagList[i].name == "LatexCode"){
+        // retrieve latex code of object
+        tagText = tagList[i].value;
+        lastcode = tagText;
+        break;
+      }
+    }
   }
+}
 
 // prompt for user input
 var latexcode=prompt("Please enter LaTeX code",lastcode,"LaTeX");
-if(latexcode!=null)
-  {
-  lastcodefile.open("w");
-  lastcodefile.write(latexcode);
-  lastcodefile.close();
-
+if(latexcode!=null){
   // add latex header etc. to create a complete latex document
   var latexfile=new File(temppath+'\\latex2illustrator.tex');
   latexfile.open("w");
@@ -48,17 +56,16 @@ if(latexcode!=null)
   var batchfile=new File(temppath+'\\latex2illustrator.bat');
   batchfile.open("w");
   batchfile.writeln(pdflatexexe+' -aux-directory="'+temppath+'" -include-directory="'+temppath+'" -output-directory="'+temppath+'" "'+temppath+'\\latex2illustrator.tex"');
-  //batchfile.writeln('pause');
   batchfile.writeln('del "'+temppath+'\\latex2illustrator.bat"');
   batchfile.close();
   batchfile.execute();
 
   for(; batchfile.exists; )
-  // wait until the batch file has removed itself
 
+  for(; pdffile.exists === false; )
+  // // wait until the batch file has removed itself
   var pdffile=File(temppath+"\\latex2illustrator.pdf");
-  if(pdffile.exists)
-    {
+  if(pdffile.exists){
     // import pdf file into the current document
     var grp=app.activeDocument.activeLayer.groupItems.createFromFile(pdffile);
     // The imported objects are grouped twice. Now move the subgroup
@@ -70,25 +77,22 @@ if(latexcode!=null)
     if (last >= 0 && grp.pageItems[last].typename == 'PathItem')
         grp.pageItems[last].remove();
 
-    // Move the imported objects to the center of the current view.
-    grp.translate(app.activeDocument.activeView.centerPoint[0]-grp.left, app.activeDocument.activeView.centerPoint[1]-grp.top);
+    // if an object is selected move new object to the old objects location and remove old object
+    if(selectedItems.length>0){ 
+      if (tagList.length>0){
+        grp.translate(selectedItem.pageItems[0].position[0]-grp.left,selectedItem.pageItems[0].position[1]-grp.top);
+        selectedItem.remove();
+      }
     }
+    else // else move the (new) object to middle of view
+      grp.translate(app.activeDocument.activeView.centerPoint[0]-grp.left, app.activeDocument.activeView.centerPoint[1]-grp.top);
+  }
   else
     alert("File "+temppath+"\\"+pdffile.name+" could not be created. LaTeX error?");
-  }
 
-//grp.pageItems.removeAll();
-
-//var targetDoc=app.activeDocument;
-//var tempDoc=open(File(temppath));
-//var objs=tempDoc.activeLayer.pageItems;
-//for(var i=0; i<objs.length; i++)
-//     objs[i].selected=true;
-//var docSelected=tempDoc.selection;
-//for(var i=0; i<docSelected.length; i++)
-//    {
-//    docSelected[i].selected=false;
-//    newItem=docSelected[i].duplicate(targetDoc,ElementPlacement.PLACEATEND);
-//    }
-//tempDoc.saved=true;
-//tempDoc.close();
+  // Add tag to new object (with latex code)
+  var tagList = grp.tags;
+  var itemTag = tagList.add();
+  itemTag.name = "LatexCode";
+  itemTag.value = latexcode;
+}
